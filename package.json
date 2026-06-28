@@ -1,0 +1,11 @@
+{
+  "name": "revest-assignment",
+  "private": true,
+  "scripts": {
+    "start:product": "npm run start:dev --prefix backend/product-service",
+    "start:order": "npm run start:dev --prefix backend/order-service",
+    "start:client": "npm run dev --prefix client",
+    "build:backend": "npm run build --prefix backend/product-service && npm run build --prefix backend/order-service",
+    "build:client": "npm run build --prefix client"
+  }
+}
