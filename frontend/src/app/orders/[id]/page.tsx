@@ -29,7 +29,7 @@ import {
 } from '@mui/material';
 import Link from 'next/link';
 import { useParams, useSearchParams } from 'next/navigation';
-import { useCallback, useEffect, useState } from 'react';
+import { Suspense, useCallback, useEffect, useState } from 'react';
 
 const statusColor: Record<string, 'default' | 'primary' | 'success' | 'warning' | 'error'> = {
   PENDING: 'warning',
@@ -39,7 +39,7 @@ const statusColor: Record<string, 'default' | 'primary' | 'success' | 'warning' 
   CANCELLED: 'error',
 };
 
-export default function OrderDetailPage() {
+function OrderDetailContent() {
   const params = useParams<{ id: string }>();
   const searchParams = useSearchParams();
   const justPlaced = searchParams.get('placed') === '1';
@@ -191,5 +191,24 @@ export default function OrderDetailPage() {
         )}
       </DashboardLayout>
     </ProtectedRoute>
+  );
+}
+
+export default function OrderDetailPage() {
+  return (
+    <Suspense
+      fallback={
+        <ProtectedRoute>
+          <DashboardLayout>
+            <Stack spacing={2} sx={{ py: 2 }}>
+              <Skeleton variant="rounded" height={80} />
+              <Skeleton variant="rounded" height={240} />
+            </Stack>
+          </DashboardLayout>
+        </ProtectedRoute>
+      }
+    >
+      <OrderDetailContent />
+    </Suspense>
   );
 }

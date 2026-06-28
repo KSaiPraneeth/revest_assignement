@@ -5,6 +5,7 @@ import { useAuth } from '@/providers/AuthProvider';
 import { useSnackbar } from '@/hooks/useSnackbar';
 import {
   Button,
+  CircularProgress,
   Link as MuiLink,
   Stack,
   TextField,
@@ -12,9 +13,9 @@ import {
 } from '@mui/material';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 
-export default function LoginPage() {
+function LoginForm() {
   const { login } = useAuth();
   const { showSnackbar } = useSnackbar();
   const searchParams = useSearchParams();
@@ -81,5 +82,21 @@ export default function LoginPage() {
         </Typography>
       </Stack>
     </AuthLayout>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense
+      fallback={
+        <AuthLayout title="Welcome back" subtitle="Loading sign in...">
+          <Stack alignItems="center" py={4}>
+            <CircularProgress size={32} />
+          </Stack>
+        </AuthLayout>
+      }
+    >
+      <LoginForm />
+    </Suspense>
   );
 }
