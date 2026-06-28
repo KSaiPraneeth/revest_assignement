@@ -1,0 +1,27 @@
+{
+  "data": [
+    {
+      "id": 1,
+      "name": "Full Name",
+      "fieldType": "TEXT",
+      "required": true,
+      "minLength": 1,
+      "maxLength": 100
+    },
+    {
+      "id": 2,
+      "name": "Email",
+      "fieldType": "TEXT",
+      "required": true,
+      "minLength": 1,
+      "maxLength": 50
+    },
+    {
+      "id": 6,
+      "name": "Gender",
+      "fieldType": "LIST",
+      "required": true,
+      "listOfValues1": ["Male", "Female", "Others"]
+    }
+  ]
+}

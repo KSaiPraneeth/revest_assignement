@@ -2,10 +2,26 @@
   "name": "revest-assignment",
   "private": true,
   "scripts": {
+    "start:auth": "npm run start:dev --prefix backend/auth-service",
     "start:product": "npm run start:dev --prefix backend/product-service",
     "start:order": "npm run start:dev --prefix backend/order-service",
-    "start:client": "npm run dev --prefix client",
-    "build:backend": "npm run build --prefix backend/product-service && npm run build --prefix backend/order-service",
-    "build:client": "npm run build --prefix client"
+    "start:frontend": "npm run dev --prefix frontend",
+    "setup:help": "echo See SETUP-WITHOUT-DOCKER.md for Windows setup without Docker",
+    "db:auth": "node scripts/create-auth-db.js",
+    "build:backend": "npm run build --prefix backend/auth-service && npm run build --prefix backend/product-service && npm run build --prefix backend/order-service",
+    "build:frontend": "npm run build --prefix frontend",
+    "docker:up": "docker compose up -d --build",
+    "docker:down": "docker compose down",
+    "migrate:product": "npm run migration:run --prefix backend/product-service",
+    "migrate:order": "npm run migration:run --prefix backend/order-service",
+    "test": "npm run test:unit",
+    "test:unit": "npm run test --prefix backend/auth-service && npm run test --prefix backend/product-service && npm run test --prefix backend/order-service && npm run test --prefix frontend",
+    "test:e2e": "playwright test --config e2e/playwright.config.ts",
+    "test:functional": "playwright test e2e/api-functional.spec.ts --config e2e/playwright.config.ts",
+    "test:regression": "playwright test e2e/regression.spec.ts --config e2e/playwright.config.ts",
+    "test:all": "npm run test:unit && npm run test:e2e"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.61.1"
   }
 }

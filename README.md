@@ -1,166 +1,251 @@
 # Revest Solutions — Senior Full Stack Developer Assignment
 
-Microservice-based backend (NestJS) and a dynamic JSON-driven signup form (Next.js + TypeScript + Material UI).
+Production-grade retail platform: NestJS microservices, PostgreSQL, JWT auth, and a Next.js storefront with cart, checkout, and admin console.
 
 ## Project Structure
 
 ```
 revest-assignment/
 ├── backend/
-│   ├── product-service/   # Product CRUD + TCP microservice (port 3001/3002)
-│   └── order-service/     # Order CRUD + inter-service communication (port 3003)
-├── client/                # Next.js dynamic signup form (port 3000)
+│   ├── auth-service/        # Users, JWT, roles, audit logs (port 3004)
+│   ├── product-service/     # Catalog, inventory, auto-seed (port 3001)
+│   └── order-service/       # Orders, stock reservation (port 3003)
+├── frontend/                # Next.js App Router + MUI (port 3000)
+├── e2e/                     # Playwright functional, regression & E2E tests
+├── scripts/                 # DB init helpers
+├── docker/
+├── docker-compose.yml
+├── SETUP-WITHOUT-DOCKER.md
+├── TESTING.md
 └── README.md
 ```
+
+## Architecture
+
+```mermaid
+flowchart TB
+    subgraph Client
+        FE[Next.js Frontend :3000]
+    end
+
+    subgraph Backend
+        AS[Auth Service :3004]
+        PS[Product Service :3001]
+        OS[Order Service :3003]
+    end
+
+    subgraph Data
+        ADB[(auth_db)]
+        PDB[(product_db)]
+        ODB[(order_db)]
+    end
+
+    FE -->|JWT| AS
+    FE -->|JWT| PS
+    FE -->|JWT| OS
+    OS -->|REST internal API| PS
+    AS --> ADB
+    PS --> PDB
+    OS --> ODB
+```
+
+### Design Decisions
+
+| Decision | Rationale |
+|----------|-----------|
+| **REST over gRPC** | Simpler debugging, Swagger docs, aligns with assignment flexibility |
+| **Separate databases** | Microservice data isolation (`auth_db`, `product_db`, `order_db`) |
+| **Shared JWT secret** | Auth issues tokens; product/order services validate locally |
+| **Internal product API** | Order service reserves stock without exposing public JWT to server-to-server calls |
+| **Repository pattern** | Decouples business logic from TypeORM persistence |
+| **JSON-driven signup** | Dynamic form fields from `form-schema.json` with renderer registry |
+| **Startup catalog seed** | 9 retail SKUs auto-inserted when missing; legacy seeds removed |
+
+## Application Features
+
+### Customer (USER role)
+- Signup / login with JWT
+- Product catalog with live stock
+- Shopping cart (persisted per user)
+- Checkout and order confirmation
+- My orders list and order detail
+
+### Admin (ADMIN role)
+- Operations dashboard (KPIs, quick actions, activity feed)
+- Product, order, user, and audit log management
+- Default admin seeded on first auth-service start
+
+**Default admin:** `admin@revest.sa` / `Admin@123`
+
+### Catalog seed (product-service)
+On startup, 9 consumer retail products are inserted if their SKU is missing (e.g. `RET-DAIRY-001` Almarai Laban, `RET-GROC-003` Basmati Rice). Deprecated `RVST-*` demo SKUs are removed automatically.
 
 ## Prerequisites
 
 - Node.js 20+
 - npm
+- **PostgreSQL 16** (local — see [SETUP-WITHOUT-DOCKER.md](./SETUP-WITHOUT-DOCKER.md))
+- Docker *(optional)*
 
-## Backend — Microservices
+## Quick Start — No Docker (Windows)
 
-### Architecture
+> Full steps: **[SETUP-WITHOUT-DOCKER.md](./SETUP-WITHOUT-DOCKER.md)**
 
-| Service | HTTP Port | Microservice Port | Responsibility |
-|---------|-----------|-------------------|----------------|
-| Product Service | 3001 | 3002 (TCP) | Product CRUD, stock management |
-| Order Service | 3003 | — | Order CRUD, validates products via Product Service |
+### 1. Create databases
 
-**Inter-service communication:** Order Service calls Product Service over **TCP** using NestJS message patterns (`get_product`, `reserve_stock`, `release_stock`, etc.).
-
-### Run Product Service
-
-```bash
-cd backend/product-service
-npm install
-npm run start:dev
+```powershell
+$env:PGPASSWORD = "YOUR_POSTGRES_PASSWORD"
+psql -U postgres -f scripts/init-databases.sql
 ```
 
-### Run Order Service (in a separate terminal)
+If `auth_db` is missing later: `npm run db:auth` (see setup doc).
+
+### 2. Start all services (4 terminals)
 
 ```bash
-cd backend/order-service
-npm install
-npm run start:dev
+# Terminal 1 — Auth Service
+cd backend/auth-service && cp .env.example .env && npm install && npm run start:dev
+
+# Terminal 2 — Product Service
+cd backend/product-service && cp .env.example .env && npm install && npm run start:dev
+
+# Terminal 3 — Order Service
+cd backend/order-service && cp .env.example .env && npm install && npm run start:dev
+
+# Terminal 4 — Frontend
+cd frontend && npm install && npm run dev
 ```
 
-> **Important:** Start Product Service before Order Service.
+Open http://localhost:3000
 
-### API Examples
+With `DB_SYNCHRONIZE=true` in `.env` (default in `.env.example`), migrations are **not required** for local dev.
 
-#### 1. Create a Product
+## Service URLs
+
+| Service | URL |
+|---------|-----|
+| Frontend | http://localhost:3000 |
+| Product API | http://localhost:3001 |
+| Product Swagger | http://localhost:3001/api/docs |
+| Order API | http://localhost:3003 |
+| Order Swagger | http://localhost:3003/api/docs |
+| Auth API | http://localhost:3004 |
+| Auth Swagger | http://localhost:3004/api/docs |
+| PostgreSQL | localhost:5432 |
+
+## Quick Start — Docker (optional)
 
 ```bash
-curl -X POST http://localhost:3001/products \
+docker compose up -d --build
+```
+
+> Docker Compose currently runs product + order services. For full auth + frontend locally, start `auth-service` and `frontend` separately (see setup doc).
+
+## Environment Variables
+
+See per-service `.env.example` files.
+
+| Variable | Service | Description |
+|----------|---------|-------------|
+| `PORT` | All | HTTP port |
+| `DB_HOST`, `DB_NAME`, … | All | PostgreSQL connection |
+| `JWT_SECRET` | Auth, Product, Order | Shared secret for JWT validation |
+| `DB_SYNCHRONIZE` | All | `true` for local dev; `false` in production |
+| `PRODUCT_SERVICE_URL` | Order | Product service base URL |
+| `AUTH_SERVICE_URL` | Product, Order | Audit log forwarding |
+
+## API Examples
+
+All protected routes require `Authorization: Bearer <token>`.
+
+### Login
+
+```bash
+curl -X POST http://localhost:3004/auth/login \
   -H "Content-Type: application/json" \
-  -d '{
-    "name": "Wireless POS Terminal",
-    "sku": "POS-001",
-    "description": "Retail POS handheld device",
-    "price": 499.99,
-    "stock": 50,
-    "category": "Hardware"
-  }'
+  -d '{"email":"admin@revest.sa","password":"Admin@123"}'
 ```
 
-#### 2. Create an Order (uses Product Service internally)
+### List products
 
-Replace `PRODUCT_ID` with the id returned from step 1.
+```bash
+curl http://localhost:3001/products?limit=10 \
+  -H "Authorization: Bearer YOUR_TOKEN"
+```
+
+### Place order
 
 ```bash
 curl -X POST http://localhost:3003/orders \
   -H "Content-Type: application/json" \
-  -d '{
-    "customerName": "Ahmed Al-Rashid",
-    "customerEmail": "ahmed@example.com",
-    "shippingAddress": "Riyadh, Saudi Arabia",
-    "items": [
-      { "productId": "PRODUCT_ID", "quantity": 2 }
-    ],
-    "notes": "Priority delivery"
-  }'
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -d '{"items":[{"productId":"<PRODUCT_UUID>","quantity":1}]}'
 ```
 
-#### 3. Get Orders with Product Details
+Response envelope:
+
+```json
+{
+  "success": true,
+  "data": { "id": "...", "totalAmount": 42.0, "status": "CONFIRMED", "products": [] },
+  "timestamp": "2026-06-28T..."
+}
+```
+
+## Testing
+
+See **[TESTING.md](./TESTING.md)** for full details.
 
 ```bash
-curl http://localhost:3003/orders
+npm run test:unit        # Jest + Vitest (no services required)
+npm run test:e2e         # Playwright (all 4 services + frontend)
+npm run test:functional  # API-only tests
+npm run test:regression  # Regression suite
+npm run test:all         # Unit + E2E
 ```
 
-#### 4. Get All Products
+Install Playwright browser once: `npx playwright install chromium`
 
-```bash
-curl http://localhost:3001/products
+## Backend Folder Structure (per service)
+
+```
+src/
+├── common/           # Filters, interceptors, JWT guards, DTOs
+├── config/           # ConfigModule registration
+├── database/         # Migrations, catalog seed (product-service)
+├── modules/          # Feature modules (auth, products, orders, …)
+├── clients/          # Inter-service HTTP clients
+└── main.ts
 ```
 
-### Product Schema
+## Frontend Highlights
 
-| Field | Type | Description |
-|-------|------|-------------|
-| id | UUID | Auto-generated |
-| name | string | Product name |
-| sku | string | Unique SKU |
-| description | string | Product description |
-| price | number | Unit price |
-| stock | number | Available quantity |
-| category | string | Product category |
-| status | enum | ACTIVE, INACTIVE, DISCONTINUED |
-
-### Order Schema
-
-| Field | Type | Description |
-|-------|------|-------------|
-| id | UUID | Auto-generated |
-| customerName | string | Customer full name |
-| customerEmail | string | Customer email |
-| shippingAddress | string | Delivery address |
-| status | enum | PENDING, CONFIRMED, SHIPPED, DELIVERED, CANCELLED |
-| items | array | Order line items with productId, quantity, unitPrice, subtotal |
-| totalAmount | number | Computed order total |
-| products | array | Enriched product details (on GET) |
-
----
-
-## Frontend — Dynamic Signup Form
-
-### Features
-
-- **JSON-driven fields** — form renders from `client/src/data/form-schema.json`
-- **Dynamic field types** — TEXT, LIST (dropdown), RADIO
-- **Validation** — React Hook Form + Zod (min/max length, required, email)
-- **Schema editor** — edit JSON live to change labels, types, required flags
-- **Persistence** — submissions saved to `localStorage`
-
-### Run Client
-
-```bash
-cd client
-npm install
-npm run dev
-```
-
-Open [http://localhost:3000](http://localhost:3000)
-
-### Supported Field Types
-
-| fieldType | Renders As |
-|-----------|------------|
-| TEXT | MUI TextField |
-| LIST | MUI Select dropdown |
-| RADIO | MUI RadioGroup |
-
-Change `"fieldType": "LIST"` to `"RADIO"` (or vice versa) in the JSON editor and click **Apply Schema** to see the UI update instantly.
-
----
+- **Auth** — JWT in localStorage, protected routes, role-based redirects
+- **Dynamic signup** — JSON schema drives TEXT / LIST fields
+- **Retail UX** — Catalog → cart → checkout → order tracking
+- **Admin console** — Dashboard, CRUD, audit trail
+- **Theme** — Light/dark mode, MUI 6, responsive layout
 
 ## Tech Stack
 
-**Backend:** NestJS 10, @nestjs/microservices (TCP), class-validator, class-transformer
+| Layer | Technologies |
+|-------|-------------|
+| Backend | NestJS 10, TypeORM, PostgreSQL, Passport JWT, Swagger, Terminus, Throttler |
+| Frontend | Next.js 14, TypeScript, MUI 6, React Hook Form, Zod |
+| Testing | Jest, Vitest, Playwright |
+| Infra | Docker Compose, GitHub Actions CI |
 
-**Frontend:** Next.js 14, TypeScript, Material UI, React Hook Form, Zod
+## Implemented Extras
 
----
+- JWT authentication and role guards (USER / ADMIN)
+- Auth microservice with audit logging
+- Health checks (`/health`) on all services
+- API rate limiting (100 req/min)
+- Global exception filter and response interceptor
+- Unit tests (auth, product, order, frontend utilities)
+- Playwright E2E, functional, and regression tests
+- Auto-seeded retail catalog and default admin user
+- GitHub Actions CI pipeline
 
 ## Author
 

@@ -3,3 +3,8 @@ dist/
 .next/
 .env
 *.log
+*.tsbuildinfo
+test-results/
+playwright-report/
+blob-report/
+backend/**/dist/
